@@ -5,6 +5,7 @@ Context Fuse: Aggregates repo files into a unified context file for enhanced AI 
 
 import argparse
 import datetime
+import mimetypes
 import subprocess
 import tempfile
 from pathlib import Path
@@ -44,6 +45,23 @@ def get_site_name(site_url: str) -> str:
     return netloc.replace(".", "_").lower()
 
 
+def is_binary_file(path: Path) -> bool:
+    """Return True if the file appears to be binary based on its MIME type."""
+    mime_type, _ = mimetypes.guess_type(str(path))
+    if mime_type is None:
+        try:
+            with open(path, "rb") as file:
+                sample = file.read(1024)
+                return b"\0" in sample
+        except OSError:
+            return True
+    if mime_type.startswith("text"):
+        return False
+    if mime_type.endswith(("json", "xml", "javascript")):
+        return False
+    return True
+
+
 def scrape_repo(repo_url: str, output_file_path: Path) -> None:
     """Clone and scrape a Git repository."""
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -68,11 +86,18 @@ def scrape_repo(repo_url: str, output_file_path: Path) -> None:
             outfile.write(f"Repository URL: {repo_url}\n")
             outfile.write(f"Scraped at: {timestamp}\n\n")
 
-            for file in clone_dir.rglob("*"):
-                if not file.is_file() or ".git" in file.parts:
+            result = subprocess.run(
+                ["git", "ls-files"],
+                cwd=clone_dir,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            for rel in result.stdout.splitlines():
+                file = clone_dir / rel
+                if not file.is_file() or is_binary_file(file):
                     continue
-                rel_path = file.relative_to(clone_dir)
-                outfile.write(f"----- FILE: '{rel_path}' (in {repo_url}) -----\n")
+                outfile.write(f"----- FILE: '{rel}' (in {repo_url}) -----\n")
                 try:
                     outfile.write(
                         file.read_text(encoding="utf-8", errors="ignore") + "\n\n"

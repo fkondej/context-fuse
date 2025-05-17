@@ -38,10 +38,13 @@ def get_repo_name(repo_url: str) -> str:
 
 def get_site_name(site_url: str) -> str:
     """Extract a safe name from a website URL."""
-    netloc = urlparse(site_url).netloc
-    if netloc.startswith("www."):
-        netloc = netloc[4:]
-    return netloc.replace(".", "_").lower()
+    parsed = urlparse(site_url)
+    # ``hostname`` strips any credentials and port number, ensuring a filesystem
+    # friendly identifier.
+    host = parsed.hostname or parsed.netloc
+    if host.startswith("www."):
+        host = host[4:]
+    return host.replace(".", "_").lower()
 
 
 def scrape_repo(repo_url: str, output_file_path: Path) -> None:
